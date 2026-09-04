@@ -41,16 +41,20 @@ MACD_SIGNAL = 9
 SMA_SHORT = 20
 SMA_LONG = 50
 
+# --- Target / stop-loss settings ---
+# Targets and stops are sized off ATR (Average True Range) so they scale with
+# each stock's actual volatility, rather than using a fixed percentage that
+# would be too tight for volatile stocks and too loose for stable ones.
+ATR_PERIOD = 14
+ATR_STOP_MULTIPLIER = 1.5    # stop-loss = entry price -/+ (ATR * this)
+ATR_TARGET_MULTIPLIER = 2.5  # target = entry price +/- (ATR * this)
+# Risk:reward with these defaults is 1 : 1.67
+
 # --- Alerting ---
 # Create a bot via @BotFather on Telegram, then message it once and fetch your
 # chat_id via https://api.telegram.org/bot<TOKEN>/getUpdates
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "PUT_YOUR_TELEGRAM_CHAT_ID_HERE")
-
-# --- Run mode ---
-# How often (seconds) the polling loop re-checks the market in `main.py`.
-POLL_INTERVAL_SECONDS = 900  # 15 minutes, matches INTERVAL by default
-
 
 # --- Run mode ---
 # How often (seconds) the polling loop re-checks the market in `main.py`.
