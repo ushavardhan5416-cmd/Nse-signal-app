@@ -24,7 +24,10 @@ def run_once() -> None:
     signals = generate_all_signals(data)
 
     for s in signals:
-        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}  ({', '.join(s.reasons)})")
+        levels = ""
+        if s.target_price is not None and s.stop_loss is not None:
+            levels = f"  target={s.target_price:.2f}  stop={s.stop_loss:.2f}"
+        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}  ({', '.join(s.reasons)})")
 
     notify_signals(signals, only_actionable=True)
 
@@ -41,3 +44,4 @@ def run_loop() -> None:
 
 if __name__ == "__main__":
     run_loop()
+    
