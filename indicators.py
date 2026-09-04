@@ -6,7 +6,7 @@ library). Swap in pandas-ta or ta-lib later if you want a wider indicator set.
 
 import pandas as pd
 
-from config import MACD_FAST, MACD_SIGNAL, MACD_SLOW, RSI_PERIOD, SMA_LONG, SMA_SHORT
+from config import ATR_PERIOD, MACD_FAST, MACD_SIGNAL, MACD_SLOW, RSI_PERIOD, SMA_LONG, SMA_SHORT
 
 
 def add_rsi(df: pd.DataFrame, period: int = RSI_PERIOD) -> pd.DataFrame:
@@ -43,9 +43,28 @@ def add_sma(df: pd.DataFrame, short: int = SMA_SHORT, long: int = SMA_LONG) -> p
     return df
 
 
+def add_atr(df: pd.DataFrame, period: int = ATR_PERIOD) -> pd.DataFrame:
+    """Average True Range -- a volatility measure used to size targets/stops
+    relative to how much each symbol actually moves, rather than a fixed %."""
+    prev_close = df["Close"].shift(1)
+    true_range = pd.concat(
+        [
+            df["High"] - df["Low"],
+            (df["High"] - prev_close).abs(),
+            (df["Low"] - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+
+    df["ATR"] = true_range.rolling(window=period, min_periods=period).mean()
+    return df
+
+
 def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df = add_rsi(df)
     df = add_macd(df)
     df = add_sma(df)
+    df = add_atr(df)
     return df
+    
