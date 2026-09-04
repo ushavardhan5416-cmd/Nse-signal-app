@@ -21,6 +21,8 @@ from config import (
 )
 from indicators import add_all_indicators
 
+MIN_VOTES_REQUIRED = 3  # need at least 3 of 4 conditions to agree
+
 
 @dataclass
 class Signal:
@@ -70,11 +72,21 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
         bearish_votes += 1
         reasons.append(f"SMA{SMA_SHORT} below SMA{SMA_LONG} (downtrend)")
 
+    # --- Chart pattern: breakout above/below recent swing high/low ---
+    swing_high, swing_low = latest.get("SWING_HIGH"), latest.get("SWING_LOW")
+    if pd.notna(swing_high) and latest["Close"] > swing_high:
+        bullish_votes += 1
+        reasons.append(f"Bullish breakout above swing high ({swing_high:.2f})")
+    elif pd.notna(swing_low) and latest["Close"] < swing_low:
+        bearish_votes += 1
+        reasons.append(f"Bearish breakout below swing low ({swing_low:.2f})")
+
     # --- Combine votes into an action ---
-    # Require at least 2 of 3 signals to agree before calling BUY/SELL.
-    if bullish_votes >= 2 and bullish_votes > bearish_votes:
+    # Require at least 3 of the 4 conditions (RSI, MACD, SMA trend, breakout)
+    # to agree before calling BUY/SELL -- otherwise HOLD.
+    if bullish_votes >= MIN_VOTES_REQUIRED:
         action = "BUY"
-    elif bearish_votes >= 2 and bearish_votes > bullish_votes:
+    elif bearish_votes >= MIN_VOTES_REQUIRED:
         action = "SELL"
     else:
         action = "HOLD"
@@ -114,4 +126,3 @@ def generate_all_signals(data: dict[str, pd.DataFrame]) -> list[Signal]:
             continue
         signals.append(generate_signal(symbol, df))
     return signals
-    
