@@ -50,6 +50,11 @@ ATR_STOP_MULTIPLIER = 1.5    # stop-loss = entry price -/+ (ATR * this)
 ATR_TARGET_MULTIPLIER = 2.5  # target = entry price +/- (ATR * this)
 # Risk:reward with these defaults is 1 : 1.67
 
+# --- Chart pattern (breakout) settings ---
+# A bullish breakout = close above the highest high of the prior N candles.
+# A bearish breakout = close below the lowest low of the prior N candles.
+BREAKOUT_LOOKBACK = 20
+
 # --- Alerting ---
 # Create a bot via @BotFather on Telegram, then message it once and fetch your
 # chat_id via https://api.telegram.org/bot<TOKEN>/getUpdates
