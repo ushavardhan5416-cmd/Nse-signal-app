@@ -72,6 +72,12 @@ STRIKE_INTERVALS = {
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "PUT_YOUR_TELEGRAM_CHAT_ID_HERE")
 
+# How often (seconds) to poll Telegram for incoming on-demand queries (e.g.
+# sending "RELIANCE" to the bot to check its current signal right now).
+# This runs independently of, and much more often than, the main scheduled
+# alert cycle below.
+TELEGRAM_POLL_INTERVAL_SECONDS = 3
+
 # --- Run mode ---
 # How often (seconds) the polling loop re-checks the market in `main.py`.
 POLL_INTERVAL_SECONDS = 900  # 15 minutes, matches INTERVAL by default
