@@ -55,6 +55,17 @@ ATR_TARGET_MULTIPLIER = 2.5  # target = entry price +/- (ATR * this)
 # A bearish breakout = close below the lowest low of the prior N candles.
 BREAKOUT_LOOKBACK = 20
 
+# --- Options (CE/PE) settings ---
+# Strike price interval used to round the underlying's price to an
+# approximate ATM (at-the-money) strike for the options suggestion. Known
+# indices have fixed intervals; anything else falls back to a rough
+# price-based heuristic in signals.py (see round_to_strike()).
+STRIKE_INTERVALS = {
+    "^NSEI": 50,      # Nifty 50
+    "^NSEBANK": 100,  # Bank Nifty
+    "^BSESN": 100,    # Sensex
+}
+
 # --- Alerting ---
 # Create a bot via @BotFather on Telegram, then message it once and fetch your
 # chat_id via https://api.telegram.org/bot<TOKEN>/getUpdates
@@ -64,3 +75,16 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "PUT_YOUR_TELEGRAM_CHAT_ID
 # --- Run mode ---
 # How often (seconds) the polling loop re-checks the market in `main.py`.
 POLL_INTERVAL_SECONDS = 900  # 15 minutes, matches INTERVAL by default
+
+# --- Alert window ---
+# Alerts (and the fetch/signal cycle itself) only run within this window, on
+# trading days (Mon-Fri). Times are in IST regardless of what timezone the
+# server itself runs in (e.g. Railway runs in UTC).
+ALERT_START_HOUR = 8
+ALERT_START_MINUTE = 30
+ALERT_END_HOUR = 17
+ALERT_END_MINUTE = 0
+
+# NSE market holidays are NOT accounted for automatically -- add dates here
+# (YYYY-MM-DD strings) for known holidays if you want the app to skip them too.
+MARKET_HOLIDAYS: list[str] = []
