@@ -39,16 +39,18 @@ def format_signal(signal: Signal) -> str:
         reward = abs(signal.target_price - signal.price)
         risk = abs(signal.stop_loss - signal.price)
         rr = reward / risk if risk else 0
+        label = "" if signal.is_actionable else " (reference only, not an active signal)"
         levels = (
-            f"🎯 Target (underlying): ₹{signal.target_price:.2f}\n"
+            f"🎯 Target (underlying){label}: ₹{signal.target_price:.2f}\n"
             f"🛑 Stop-loss (underlying): ₹{signal.stop_loss:.2f}\n"
             f"Risk:Reward ≈ 1:{rr:.1f}\n"
         )
 
     options_line = ""
     if signal.option_type is not None:
+        lean = "" if signal.is_actionable else " (based on current lean, not confirmed)"
         options_line = (
-            f"📈 Options view: {signal.option_type} around ₹{signal.approx_strike} strike\n"
+            f"📈 Options view{lean}: {signal.option_type} around ₹{signal.approx_strike} strike\n"
             f"(approx ATM based on underlying price -- check actual premium/liquidity "
             f"on your broker before entering; option premiums don't move 1:1 with the "
             f"underlying, and time decay isn't factored in here)\n"
@@ -69,4 +71,3 @@ def notify_signals(signals: list[Signal], only_actionable: bool = True) -> None:
         if only_actionable and signal.action == "HOLD":
             continue
         send_telegram_message(format_signal(signal))
-       
