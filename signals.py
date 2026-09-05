@@ -52,6 +52,7 @@ class Signal:
     stop_loss: Optional[float] = None
     option_type: Optional[str] = None    # "CE" or "PE"
     approx_strike: Optional[int] = None
+    is_actionable: bool = False  # True only for a confirmed BUY/SELL (3+ votes)
 
 
 def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
@@ -118,14 +119,19 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
     option_type = None
     approx_strike = None
 
-    # Target/stop are only meaningful for actionable signals, and only when
-    # ATR has enough history to be computed (not NaN).
-    if action != "HOLD" and pd.notna(atr):
-        if action == "BUY":
+    # Always compute a reference target/stop/option view based on whichever
+    # direction is currently leaning (even for HOLD, e.g. for on-demand
+    # Telegram queries where seeing *some* levels is more useful than none).
+    # is_actionable=True only when the full 3-of-4 bar was actually met --
+    # that's what scheduled alerts key off of, so HOLD reference levels
+    # never trigger a push notification.
+    if pd.notna(atr):
+        leaning_bullish = bullish_votes >= bearish_votes
+        if leaning_bullish:
             target_price = price + atr * ATR_TARGET_MULTIPLIER
             stop_loss = price - atr * ATR_STOP_MULTIPLIER
             option_type = "CE"
-        elif action == "SELL":
+        else:
             target_price = price - atr * ATR_TARGET_MULTIPLIER
             stop_loss = price + atr * ATR_STOP_MULTIPLIER
             option_type = "PE"
@@ -141,6 +147,7 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
         stop_loss=stop_loss,
         option_type=option_type,
         approx_strike=approx_strike,
+        is_actionable=(action != "HOLD"),
     )
 
 
