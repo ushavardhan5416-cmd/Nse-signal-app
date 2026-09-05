@@ -43,11 +43,16 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _split_batch(df: pd.DataFrame, symbols: list[str]) -> dict[str, pd.DataFrame]:
-    """Split a multi-ticker yfinance DataFrame into one DataFrame per symbol."""
+    """Split a multi-ticker yfinance DataFrame into one DataFrame per symbol.
+
+    Important: yfinance still returns MultiIndex columns even for a single
+    ticker when group_by='ticker' is passed (which we always do) -- it's
+    NOT just a multi-symbol thing. So we detect the actual column structure
+    rather than assuming based on len(symbols)."""
     result = {}
 
-    if len(symbols) == 1:
-        # yfinance doesn't use a MultiIndex when only one ticker is requested
+    if not isinstance(df.columns, pd.MultiIndex):
+        # Only happens if yfinance ever returns flat columns for this call
         single = _clean(df)
         if not single.empty:
             result[symbols[0]] = single
