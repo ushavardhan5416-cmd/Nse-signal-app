@@ -18,10 +18,27 @@ from config import (
     RSI_OVERSOLD,
     SMA_LONG,
     SMA_SHORT,
+    STRIKE_INTERVALS,
 )
 from indicators import add_all_indicators
 
 MIN_VOTES_REQUIRED = 3  # need at least 3 of 4 conditions to agree
+
+
+def round_to_strike(symbol: str, price: float) -> int:
+    """Round the underlying's price to an approximate ATM strike. Known
+    indices use their real strike interval; anything else falls back to a
+    rough heuristic based on price magnitude, since actual F&O strike
+    intervals vary by stock and aren't available from yfinance."""
+    if symbol in STRIKE_INTERVALS:
+        interval = STRIKE_INTERVALS[symbol]
+    elif price < 500:
+        interval = 10
+    elif price < 2000:
+        interval = 50
+    else:
+        interval = 100
+    return round(price / interval) * interval
 
 
 @dataclass
@@ -33,6 +50,8 @@ class Signal:
     reasons: list[str]
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
+    option_type: Optional[str] = None    # "CE" or "PE"
+    approx_strike: Optional[int] = None
 
 
 def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
@@ -96,6 +115,8 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
 
     target_price = None
     stop_loss = None
+    option_type = None
+    approx_strike = None
 
     # Target/stop are only meaningful for actionable signals, and only when
     # ATR has enough history to be computed (not NaN).
@@ -103,9 +124,12 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
         if action == "BUY":
             target_price = price + atr * ATR_TARGET_MULTIPLIER
             stop_loss = price - atr * ATR_STOP_MULTIPLIER
+            option_type = "CE"
         elif action == "SELL":
             target_price = price - atr * ATR_TARGET_MULTIPLIER
             stop_loss = price + atr * ATR_STOP_MULTIPLIER
+            option_type = "PE"
+        approx_strike = round_to_strike(symbol, price)
 
     return Signal(
         symbol=symbol,
@@ -115,6 +139,8 @@ def generate_signal(symbol: str, df: pd.DataFrame) -> Signal:
         reasons=reasons,
         target_price=target_price,
         stop_loss=stop_loss,
+        option_type=option_type,
+        approx_strike=approx_strike,
     )
 
 
@@ -126,3 +152,4 @@ def generate_all_signals(data: dict[str, pd.DataFrame]) -> list[Signal]:
             continue
         signals.append(generate_signal(symbol, df))
     return signals
+    
