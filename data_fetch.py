@@ -27,20 +27,35 @@ def _chunk(items: list, size: int):
         yield items[i : i + size]
 
 
+PRICE_COLUMNS = ["Open", "High", "Low", "Close"]
+
+
+def _clean(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows with missing price data, but don't drop rows just because
+    Volume is NaN -- indices (Nifty, Bank Nifty, Sensex) commonly report no
+    volume via yfinance, and dropping on that column would wipe out all
+    index data even though the prices themselves are perfectly valid."""
+    df = df.dropna(subset=PRICE_COLUMNS)
+    if "Volume" in df.columns:
+        df = df.copy()
+        df["Volume"] = df["Volume"].fillna(0)
+    return df
+
+
 def _split_batch(df: pd.DataFrame, symbols: list[str]) -> dict[str, pd.DataFrame]:
     """Split a multi-ticker yfinance DataFrame into one DataFrame per symbol."""
     result = {}
 
     if len(symbols) == 1:
         # yfinance doesn't use a MultiIndex when only one ticker is requested
-        single = df.dropna()
+        single = _clean(df)
         if not single.empty:
             result[symbols[0]] = single
         return result
 
     for symbol in symbols:
         try:
-            sub = df.xs(symbol, axis=1, level=0).dropna()
+            sub = _clean(df.xs(symbol, axis=1, level=0))
         except KeyError:
             continue
         if not sub.empty:
@@ -91,4 +106,4 @@ def fetch_ohlcv(symbol: str) -> pd.DataFrame:
     if symbol not in result:
         raise ValueError(f"No data returned for {symbol}. Check the symbol or your connection.")
     return result[symbol]
-
+    
