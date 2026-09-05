@@ -1,20 +1,26 @@
 """
 Entry point: runs a polling loop that fetches data, generates signals, and
-sends alerts. This is alerts-only -- it never places orders. Run this during
-market hours (NSE: 9:15 AM - 3:30 PM IST, Mon-Fri).
+sends alerts. This is alerts-only -- it never places orders. The cycle only
+runs within the configured alert window (see config.py / market_hours.py),
+regardless of what timezone the server itself is in.
 """
 
 import time
-from datetime import datetime
 
 from config import POLL_INTERVAL_SECONDS, SYMBOLS
 from data_fetch import fetch_all
+from market_hours import is_within_alert_window, now_ist
 from notifier import notify_signals
 from signals import generate_all_signals
 
 
 def run_once() -> None:
-    print(f"\n[{datetime.now()}] Fetching data for {len(SYMBOLS)} symbols...")
+    if not is_within_alert_window():
+        print(f"[{now_ist()}] Outside alert window (trading days, configured "
+              f"hours only) -- skipping this cycle.")
+        return
+
+    print(f"\n[{now_ist()}] Fetching data for {len(SYMBOLS)} symbols...")
     data = fetch_all(SYMBOLS)
 
     if not data:
@@ -27,7 +33,8 @@ def run_once() -> None:
         levels = ""
         if s.target_price is not None and s.stop_loss is not None:
             levels = f"  target={s.target_price:.2f}  stop={s.stop_loss:.2f}"
-        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}  ({', '.join(s.reasons)})")
+        options = f"  [{s.option_type} ~{s.approx_strike}]" if s.option_type else ""
+        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}{options}  ({', '.join(s.reasons)})")
 
     notify_signals(signals, only_actionable=True)
 
