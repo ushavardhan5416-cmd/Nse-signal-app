@@ -40,15 +40,25 @@ def format_signal(signal: Signal) -> str:
         risk = abs(signal.stop_loss - signal.price)
         rr = reward / risk if risk else 0
         levels = (
-            f"🎯 Target: ₹{signal.target_price:.2f}\n"
-            f"🛑 Stop-loss: ₹{signal.stop_loss:.2f}\n"
+            f"🎯 Target (underlying): ₹{signal.target_price:.2f}\n"
+            f"🛑 Stop-loss (underlying): ₹{signal.stop_loss:.2f}\n"
             f"Risk:Reward ≈ 1:{rr:.1f}\n"
+        )
+
+    options_line = ""
+    if signal.option_type is not None:
+        options_line = (
+            f"📈 Options view: {signal.option_type} around ₹{signal.approx_strike} strike\n"
+            f"(approx ATM based on underlying price -- check actual premium/liquidity "
+            f"on your broker before entering; option premiums don't move 1:1 with the "
+            f"underlying, and time decay isn't factored in here)\n"
         )
 
     return (
         f"{emoji} *{signal.action}* — {signal.symbol}\n"
         f"Price: ₹{signal.price:.2f}\n"
         f"{levels}"
+        f"{options_line}"
         f"Time: {signal.timestamp}\n"
         f"Reasons:\n{reasons_text}"
     )
