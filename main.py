@@ -3,8 +3,13 @@ Entry point: runs a polling loop that fetches data, generates signals, and
 sends alerts. This is alerts-only -- it never places orders. The cycle only
 runs within the configured alert window (see config.py / market_hours.py),
 regardless of what timezone the server itself is in.
+
+Also starts a background thread that listens for on-demand Telegram queries
+(e.g. sending "RELIANCE" to the bot to check its signal right now, outside
+the normal schedule) -- see telegram_listener.py.
 """
 
+import threading
 import time
 
 from config import POLL_INTERVAL_SECONDS, SYMBOLS
@@ -12,6 +17,7 @@ from data_fetch import fetch_all
 from market_hours import is_within_alert_window, now_ist
 from notifier import notify_signals
 from signals import generate_all_signals
+from telegram_listener import run_listener
 
 
 def run_once() -> None:
@@ -50,5 +56,7 @@ def run_loop() -> None:
 
 
 if __name__ == "__main__":
+    listener_thread = threading.Thread(target=run_listener, daemon=True)
+    listener_thread.start()
     run_loop()
     
