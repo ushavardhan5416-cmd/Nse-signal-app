@@ -94,3 +94,9 @@ ALERT_END_MINUTE = 0
 # NSE market holidays are NOT accounted for automatically -- add dates here
 # (YYYY-MM-DD strings) for known holidays if you want the app to skip them too.
 MARKET_HOLIDAYS: list[str] = []
+
+# --- Daily summary ---
+# Time (IST) to send the daily target/stop-loss summary. Must fall within
+# the alert window above for it to actually get checked/sent.
+SUMMARY_HOUR = 15
+SUMMARY_MINUTE = 30
