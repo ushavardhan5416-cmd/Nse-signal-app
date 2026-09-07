@@ -7,6 +7,9 @@ regardless of what timezone the server itself is in.
 Also starts a background thread that listens for on-demand Telegram queries
 (e.g. sending "RELIANCE" to the bot to check its signal right now, outside
 the normal schedule) -- see telegram_listener.py.
+
+Tracks open BUY/SELL positions to notify when target/stop-loss is hit, and
+sends a daily summary at a configured time -- see position_tracker.py.
 """
 
 import threading
@@ -16,6 +19,7 @@ from config import POLL_INTERVAL_SECONDS, SYMBOLS
 from data_fetch import fetch_all
 from market_hours import is_within_alert_window, now_ist
 from notifier import notify_signals
+from position_tracker import check_positions, maybe_send_daily_summary, open_position
 from signals import generate_all_signals
 from telegram_listener import run_listener
 
@@ -42,7 +46,17 @@ def run_once() -> None:
         options = f"  [{s.option_type} ~{s.approx_strike}]" if s.option_type else ""
         print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}{options}  ({', '.join(s.reasons)})")
 
+    # Check existing open positions against this cycle's fresh prices first
+    # (may close some out with a target/stop notification), then open new
+    # positions for any freshly confirmed BUY/SELL signals.
+    check_positions(signals)
+    for s in signals:
+        if s.is_actionable:
+            open_position(s)
+
     notify_signals(signals, only_actionable=True)
+
+    maybe_send_daily_summary(now_ist())
 
 
 def run_loop() -> None:
@@ -59,4 +73,3 @@ if __name__ == "__main__":
     listener_thread = threading.Thread(target=run_listener, daemon=True)
     listener_thread.start()
     run_loop()
-    
