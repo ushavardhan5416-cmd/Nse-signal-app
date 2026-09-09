@@ -1,4 +1,5 @@
-"""
+
+        """
 Turns indicator values into discrete signals.
 
 This is intentionally simple and rule-based so it's easy to read, audit, and
