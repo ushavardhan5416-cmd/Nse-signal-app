@@ -30,6 +30,8 @@ INDEX_ALIASES = {
     "NIFTY50": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
     "SENSEX": "^BSESN",
+    "FINNIFTY": "^CNXFIN",
+    "FIN NIFTY": "^CNXFIN",
 }
 
 HELP_TEXT = (
@@ -37,7 +39,7 @@ HELP_TEXT = (
     "Examples:\n"
     "  RELIANCE\n"
     "  /check TCS\n"
-    "  NIFTY / BANKNIFTY / SENSEX\n"
+    "  NIFTY / BANKNIFTY / SENSEX / FINNIFTY\n"
 )
 
 
@@ -128,3 +130,4 @@ def run_listener() -> None:
             print(f"[telegram_listener] Error: {exc}")
 
         time.sleep(TELEGRAM_POLL_INTERVAL_SECONDS)
+      
