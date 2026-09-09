@@ -64,6 +64,7 @@ STRIKE_INTERVALS = {
     "^NSEI": 50,      # Nifty 50
     "^NSEBANK": 100,  # Bank Nifty
     "^BSESN": 100,    # Sensex
+    "^CNXFIN": 50,    # Fin Nifty
 }
 
 # --- Alerting ---
