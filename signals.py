@@ -1,5 +1,4 @@
-
-        """
+"""
 Turns indicator values into discrete signals.
 
 This is intentionally simple and rule-based so it's easy to read, audit, and
@@ -160,3 +159,4 @@ def generate_all_signals(data: dict[str, pd.DataFrame]) -> list[Signal]:
             continue
         signals.append(generate_signal(symbol, df))
     return signals
+       
