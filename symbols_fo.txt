@@ -11,6 +11,7 @@
 ^NSEI
 ^NSEBANK
 ^BSESN
+^CNXFIN
 
 # --- Nifty 50 ---
 RELIANCE.NS
