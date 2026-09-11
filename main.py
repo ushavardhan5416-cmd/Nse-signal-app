@@ -44,7 +44,8 @@ def run_once() -> None:
         if s.target_price is not None and s.stop_loss is not None:
             levels = f"  target={s.target_price:.2f}  stop={s.stop_loss:.2f}"
         options = f"  [{s.option_type} ~{s.approx_strike}]" if s.option_type else ""
-        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}{options}  ({', '.join(s.reasons)})")
+        votes = f"  [{s.vote_count}/{s.total_conditions}: {', '.join(s.triggered_by)}]" if s.is_actionable else ""
+        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}{options}{votes}  ({', '.join(s.reasons)})")
 
     # Check existing open positions against this cycle's fresh prices first
     # (may close some out with a target/stop notification), then open new

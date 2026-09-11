@@ -3,7 +3,7 @@ Walks forward through history bar-by-bar, generating a signal at each point
 using only data available up to that bar (no lookahead), and simulates the
 SAME entry/exit logic the live app actually uses (see position_tracker.py):
 
-- Open a position when a BUY/SELL signal fires (3-of-4 conditions agree)
+- Open a position when a BUY/SELL signal fires (4-of-7 conditions agree)
 - Exit ONLY when target or stop-loss is hit -- not on the next opposite
   signal, which is what earlier versions of this backtest did
 - Only one open position per symbol at a time, matching live behavior

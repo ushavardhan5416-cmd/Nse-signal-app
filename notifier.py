@@ -34,6 +34,17 @@ def format_signal(signal: Signal) -> str:
     emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⚪"}[signal.action]
     reasons_text = "\n".join(f"  - {r}" for r in signal.reasons)
 
+    # Which of the 7 conditions (RSI/MACD/SMA/breakout/chart pattern/
+    # Supertrend/VWAP) actually drove this call, e.g. "4/7 agree: RSI
+    # oversold; MACD bullish crossover; Chart pattern: Bullish Engulfing".
+    # Only shown for a confirmed BUY/SELL.
+    triggered_text = ""
+    if signal.is_actionable and signal.triggered_by:
+        triggered_text = (
+            f"📊 Recommended by ({signal.vote_count}/{signal.total_conditions} conditions agree): "
+            f"{'; '.join(signal.triggered_by)}\n"
+        )
+
     levels = ""
     if signal.target_price is not None and signal.stop_loss is not None:
         reward = abs(signal.target_price - signal.price)
@@ -59,6 +70,7 @@ def format_signal(signal: Signal) -> str:
     return (
         f"{emoji} *{signal.action}* — {signal.symbol}\n"
         f"Price: ₹{signal.price:.2f}\n"
+        f"{triggered_text}"
         f"{levels}"
         f"{options_line}"
         f"Time: {signal.timestamp}\n"

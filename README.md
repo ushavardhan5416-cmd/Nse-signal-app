@@ -30,21 +30,41 @@ python backtest.py
 python main.py
 ```
 
-## Chart pattern: breakout confirmation
+## Chart patterns: breakout + classic/candlestick patterns
 
-The 4th required condition is a **breakout pattern**: the close must break
-above the highest high of the prior 20 candles (bullish) or below the lowest
-low of the prior 20 candles (bearish) — `BREAKOUT_LOOKBACK` in `config.py`
-controls the window.
+Two of the five conditions are chart patterns:
 
-Breakouts were chosen over other chart patterns because they're reliable to
-detect mechanically from OHLC data alone. Candlestick patterns (engulfing,
-hammer, etc.) are noisy at a 15-minute timeframe, and classic chart patterns
-(head & shoulders, double top/bottom, triangles) need peak/trough detection
-across many more candles and are unreliable to auto-detect without a lot
-more logic and false positives. A swing-high/low breakout is a clean,
-well-defined signal that plugs into the same voting system as the other
-three indicators.
+**4th condition — breakout.** The close must break above the highest high of
+the prior 20 candles (bullish) or below the lowest low of the prior 20
+candles (bearish) — `BREAKOUT_LOOKBACK` in `config.py` controls the window.
+For stocks (real volume data), the breakout only counts if it happens on
+above-average volume (`VOLUME_CONFIRMATION_MULTIPLIER`); indices report 0
+volume via yfinance so this check is skipped for them.
+
+**5th condition — classic + candlestick patterns** (`chart_patterns.py`).
+Bars are first reduced to "swing pivots" (local highs/lows confirmed a few
+candles on either side), and each pattern below is a specific arrangement of
+2-3 recent pivots:
+
+- **Double Top / Double Bottom** — two similar-height peaks (or similar-depth
+  troughs) with a neckline between them, confirmed once price closes past
+  the neckline.
+- **Head & Shoulders / Inverse Head & Shoulders** — a taller "head" between
+  two roughly equal "shoulders", confirmed on a neckline break.
+- **Triangles** (ascending / descending / symmetrical) — a trendline fit
+  through recent swing highs and recent swing lows; confirmed once price
+  breaks out beyond the relevant trendline.
+- **Candlestick reversals** (Bullish/Bearish Engulfing, Hammer, Shooting
+  Star) — checked last, as a fallback, since single/two-candle patterns are
+  the noisiest of the group, especially on a 15-minute timeframe.
+
+Only the first confirmed pattern (checked in the priority order above) casts
+the 5th vote — patterns that are still "forming" (no neckline/trendline
+break yet) don't count. `PATTERN_PIVOT_WINDOW`, `PATTERN_LOOKBACK`,
+`PATTERN_PRICE_TOLERANCE`, and `PATTERN_TRIANGLE_MIN_TOUCHES` in `config.py`
+control the detection sensitivity. As with everything else here, these are
+heuristic detectors, not a guarantee the pattern is "real" — backtest before
+trusting them.
 
 ## Alert window (trading hours only)
 
@@ -118,7 +138,7 @@ NIFTY / BANKNIFTY / SENSEX
 It fetches fresh data and replies with the current signal (BUY/SELL/HOLD,
 reasons, target/stop-loss and CE/PE view if applicable) — same format as
 the scheduled alerts. Even for a HOLD (the most common result, given the
-strict 3-of-4 rule), you'll still see a target/stop-loss and CE/PE view
+strict 3-of-5 rule), you'll still see a target/stop-loss and CE/PE view
 based on the currently leaning direction — clearly labeled as a reference
 level rather than a confirmed signal, since HOLD never triggers a real
 BUY/SELL. This works independently of the alert window, so you can check a
@@ -152,14 +172,33 @@ target/stop-loss shown are underlying-price levels, **not** option premium
 targets. Always check actual strike prices, premiums, and liquidity on your
 broker's terminal before placing an options trade.
 
+## Supertrend + VWAP (6th & 7th signal conditions)
+
+Two more conditions were added to the vote, bringing it to **7 total** —
+the bar to fire a signal moved from 3-of-5 to **4-of-7** (roughly the same
+~60% threshold as before).
+
+**Supertrend** (`ST_PERIOD`/`ST_MULTIPLIER` in `config.py`, 10/3 by
+default) is an ATR-based trend-following line. Unlike the SMA vote, which
+reports the *standing* trend on every bar, Supertrend only votes on the bar
+where the trend actually **flips** direction — so it behaves like a timing
+signal (similar to the MACD crossover) rather than another standing filter.
+
+**VWAP** (Volume Weighted Average Price) is a session-based fair-value
+reference — it resets at the start of each trading day and accumulates
+`(typical price × volume)` through the session. Price above VWAP votes
+bullish, below votes bearish. Like the breakout volume check, this is
+automatically skipped for indices (no real volume data via yfinance), so
+they're voted on by the remaining 6 conditions.
+
 ## Signal quality filters: ADX + volume confirmation
 
-Two filters were added on top of the core RSI/MACD/SMA/breakout system to
-cut down false signals:
+Two filters were added on top of the core RSI/MACD/SMA/breakout/pattern
+system to cut down false signals:
 
 **ADX (trend strength gate).** ADX measures how strongly a trend is
 developing, regardless of direction — it doesn't vote bullish or bearish
-itself, it gates whatever the other 4 conditions already decided. If ADX is
+itself, it gates whatever the other 5 conditions already decided. If ADX is
 below `ADX_THRESHOLD` (default 25, the standard textbook cutoff) when a
 BUY/SELL would otherwise fire, the signal is suppressed back to HOLD. This
 targets the most common failure mode for RSI/MACD-style signals: firing in
@@ -232,17 +271,26 @@ too long per cycle.
 
 - `data_fetch.py` — pulls OHLCV candles (currently via `yfinance`, free but
   delayed data — good for prototyping)
-- `indicators.py` — computes RSI, MACD, SMA, ATR, ADX, and rolling volume
-  average on the price series
-- `signals.py` — requires **at least 3 of the 4 conditions to agree** (RSI at
-  an extreme, a fresh MACD crossover, SMA trend, and a breakout above/below
-  the recent swing high/low) before calling BUY or SELL. Two additional
-  filters sit on top: a **breakout only counts on above-average volume**
-  (stocks only — indices have no real volume data, so this check is
-  automatically skipped for them), and an **ADX gate** suppresses the whole
-  signal back to HOLD if ADX indicates the market isn't trending strongly
-  enough, regardless of how the votes came out. Otherwise HOLD, and HOLD
-  signals never trigger a Telegram alert. BUY/SELL signals also get a
+- `indicators.py` — computes RSI, MACD, SMA, ATR, ADX, Supertrend, VWAP, and
+  rolling volume average on the price series
+- `chart_patterns.py` — detects Double Top/Bottom, Head & Shoulders,
+  Triangles, and candlestick reversal patterns (Engulfing/Hammer/Shooting
+  Star) from swing pivots
+- `signals.py` — requires **at least 4 of the 7 conditions to agree** (RSI at
+  an extreme, a fresh MACD crossover, SMA trend, a breakout above/below the
+  recent swing high/low, a confirmed chart pattern from `chart_patterns.py`,
+  a fresh Supertrend flip, and price vs VWAP) before calling BUY or SELL. Two
+  additional filters
+  sit on top: a **breakout only counts on above-average volume** (stocks
+  only — indices have no real volume data, so this check is automatically
+  skipped for them), and an **ADX gate** suppresses the whole signal back to
+  HOLD if ADX indicates the market isn't trending strongly enough,
+  regardless of how the votes came out. Otherwise HOLD, and HOLD signals
+  never trigger a Telegram alert. Every BUY/SELL alert also states exactly
+  which conditions voted for it (e.g. "4/7 conditions agree: RSI oversold;
+  MACD bullish crossover; Chart pattern: Bullish Engulfing; Supertrend
+  flipped bullish"). BUY/SELL
+  signals also get a
   target price and stop-loss, sized off ATR so they scale with each stock's
   actual volatility (see below)
 - `notifier.py` — formats and sends alerts to Telegram
@@ -258,10 +306,70 @@ prototyping. For real-time NSE data, swap `data_fetch.py` for a broker API:
 
 - [Zerodha Kite Connect](https://kite.trade/) — most popular, well-documented
 - [Upstox API](https://upstox.com/developer/api-documentation/)
-- [Angel One SmartAPI](https://smartapi.angelbroking.com/)
+- [Angel One SmartAPI](https://smartapi.angelbroking.com/) — **built in**,
+  see below
 
 Keep the function signature `fetch_ohlcv(symbol) -> DataFrame` the same and
 nothing else in the app needs to change.
+
+## Using Angel One SmartAPI for data
+
+The app can pull data from Angel One's SmartAPI instead of yfinance —
+`angelone_fetch.py` implements this as a drop-in replacement (same
+`fetch_ohlcv(symbol)` / `fetch_all(symbols)` shape yfinance uses, so
+`signals.py`, `backtest.py`, `main.py`, and `telegram_listener.py` don't
+need any changes).
+
+**Requirements:**
+- A funded Angel One trading account with API access enabled
+- An API key from [smartapi.angelbroking.com/apps](https://smartapi.angelbroking.com/apps)
+- Your client code and trading PIN
+- 2FA/TOTP enabled on your account — you need the **base32 secret** behind
+  the QR code (shown once when you enable it), not a live 6-digit code
+
+**Setup:**
+
+1. Install the extra dependencies (already in `requirements.txt`):
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Set these environment variables (don't hardcode them in `config.py`):
+   ```bash
+   export DATA_SOURCE="angelone"
+   export ANGEL_API_KEY="your_api_key"
+   export ANGEL_CLIENT_CODE="your_client_code"
+   export ANGEL_PIN="your_trading_pin"
+   export ANGEL_TOTP_SECRET="your_totp_base32_secret"
+   ```
+3. Run as usual (`python backtest.py` / `python main.py`) — `data_fetch.py`
+   automatically routes to `angelone_fetch.py` when `DATA_SOURCE=angelone`.
+
+**Important differences from yfinance:**
+- **No batch endpoint.** Angel One fetches one symbol per request, rate
+  limited to roughly 3/sec — a ~180-symbol watchlist takes a couple of
+  minutes per cycle, not seconds. If you expand the watchlist much further,
+  raise `POLL_INTERVAL_SECONDS` in `config.py` accordingly.
+- **Symbol resolution.** Angel needs a numeric `symboltoken`, not a plain
+  ticker. `angelone_fetch.py` downloads Angel's instrument master once
+  (cached to disk, refreshed daily) and maps our `"RELIANCE.NS"`-style
+  tickers to it automatically for NSE equities. Indices (Nifty, Bank Nifty,
+  Sensex, Fin Nifty) use hardcoded tokens in `ANGEL_INDEX_TOKENS`
+  (`config.py`) since they aren't in the equity instrument master — verify
+  these against Angel's [scrip master](https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json)
+  if they ever stop resolving.
+- **History limits.** Angel caps how much history you can request per
+  candle interval (e.g. 30 days for 1-minute candles, 200 days for 15-minute
+  — see `ANGEL_MAX_DAYS` in `config.py`). `LOOKBACK_PERIOD` is automatically
+  clamped to whatever Angel allows for your configured `INTERVAL`.
+- **Session handling.** Angel sessions are re-established automatically
+  (roughly every 8 hours in this implementation); you don't need to restart
+  the app daily yourself, but Angel's own servers still enforce their
+  standard session/token expiry rules independently.
+- **This module wasn't tested against Angel One's live servers** while
+  building it (no account/credentials available in the environment it was
+  built in) — it was implemented against their documented request/response
+  format and unit tested with mocked responses. Test it against your own
+  account with a small watchlist before trusting it for anything live.
 
 ## Running it from your phone (via cloud deployment)
 

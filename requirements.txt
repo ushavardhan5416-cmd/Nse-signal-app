@@ -1,3 +1,10 @@
 pandas>=2.0
 yfinance>=0.2.40
 requests>=2.31
+
+# Only needed if DATA_SOURCE="angelone" in config.py (see README: "Using
+# Angel One SmartAPI for data"). Not required for the default yfinance setup.
+smartapi-python>=1.5.5
+pyotp>=2.9.0
+logzero>=1.7.0
+websocket-client>=1.6.0

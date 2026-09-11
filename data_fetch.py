@@ -1,17 +1,19 @@
 """
 Fetches OHLCV data for NSE symbols (stocks + indices).
 
-Uses yfinance (free, delayed data -- fine for prototyping/alerts, not for
-real-time execution). With 180+ symbols in the watchlist, fetching one at a
-time would be slow and risks rate limiting, so this batches requests:
-yfinance can download many tickers in a single call and returns a combined
-DataFrame with a MultiIndex column structure, which we split back out per
-symbol.
+Two backends are available, selected via DATA_SOURCE in config.py:
 
-For real-time/production use, swap this module for a broker API (Kite
-Connect, Upstox, SmartAPI) -- keep the same return shape (a dict of
-symbol -> DataFrame with ['Open','High','Low','Close','Volume'] columns)
-and the rest of the app doesn't need to change.
+- "yfinance" (default) -- free, delayed data, no account needed, good for
+  prototyping. Implemented directly in this file.
+- "angelone" -- Angel One SmartAPI, needs a funded trading account with API
+  access. Implemented in angelone_fetch.py; imported lazily below so the app
+  still runs with plain yfinance if the SmartApi package/credentials aren't
+  set up.
+
+Both backends return the same shape: a dict of symbol -> DataFrame with
+['Open','High','Low','Close','Volume'] columns, so nothing else in the app
+(signals.py, backtest.py, telegram_listener.py, main.py) needs to know or
+care which one is active.
 """
 
 import time
@@ -19,7 +21,7 @@ import time
 import pandas as pd
 import yfinance as yf
 
-from config import BATCH_SIZE, INTERVAL, LOOKBACK_PERIOD
+from config import BATCH_SIZE, DATA_SOURCE, INTERVAL, LOOKBACK_PERIOD
 
 
 def _chunk(items: list, size: int):
@@ -69,7 +71,7 @@ def _split_batch(df: pd.DataFrame, symbols: list[str]) -> dict[str, pd.DataFrame
     return result
 
 
-def fetch_all(symbols: list[str]) -> dict[str, pd.DataFrame]:
+def _fetch_all_yfinance(symbols: list[str]) -> dict[str, pd.DataFrame]:
     """Fetch OHLCV data for a list of symbols, batching requests for speed."""
     data = {}
 
@@ -105,9 +107,25 @@ def fetch_all(symbols: list[str]) -> dict[str, pd.DataFrame]:
     return data
 
 
-def fetch_ohlcv(symbol: str) -> pd.DataFrame:
+def _fetch_ohlcv_yfinance(symbol: str) -> pd.DataFrame:
     """Fetch recent OHLCV candles for a single symbol (used by backtest.py)."""
-    result = fetch_all([symbol])
+    result = _fetch_all_yfinance([symbol])
     if symbol not in result:
         raise ValueError(f"No data returned for {symbol}. Check the symbol or your connection.")
     return result[symbol]
+
+
+def fetch_all(symbols: list[str]) -> dict[str, pd.DataFrame]:
+    """Dispatches to the configured data backend (DATA_SOURCE in config.py)."""
+    if DATA_SOURCE == "angelone":
+        from angelone_fetch import fetch_all as _fetch_all_angelone
+        return _fetch_all_angelone(symbols)
+    return _fetch_all_yfinance(symbols)
+
+
+def fetch_ohlcv(symbol: str) -> pd.DataFrame:
+    """Dispatches to the configured data backend (DATA_SOURCE in config.py)."""
+    if DATA_SOURCE == "angelone":
+        from angelone_fetch import fetch_ohlcv as _fetch_ohlcv_angelone
+        return _fetch_ohlcv_angelone(symbol)
+    return _fetch_ohlcv_yfinance(symbol)

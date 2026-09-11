@@ -16,6 +16,8 @@ from config import (
     RSI_PERIOD,
     SMA_LONG,
     SMA_SHORT,
+    ST_MULTIPLIER,
+    ST_PERIOD,
     VOLUME_MA_PERIOD,
 )
 
@@ -115,6 +117,72 @@ def add_adx(df: pd.DataFrame, period: int = ADX_PERIOD) -> pd.DataFrame:
     return df
 
 
+def add_supertrend(df: pd.DataFrame, period: int = ST_PERIOD, multiplier: float = ST_MULTIPLIER) -> pd.DataFrame:
+    """Supertrend -- an ATR-based trend-following line. Unlike ATR itself,
+    the bands are path-dependent (each band can only tighten toward price,
+    never loosen, until price actually crosses it) so this is computed with
+    an explicit loop rather than vectorized pandas ops. Adds ST_TREND: +1
+    for uptrend, -1 for downtrend, NaN until enough bars exist to seed it."""
+    high, low, close = df["High"], df["Low"], df["Close"]
+    prev_close = close.shift(1)
+    true_range = pd.concat(
+        [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+    ).max(axis=1)
+    atr = true_range.rolling(window=period, min_periods=period).mean()
+
+    hl2 = (high + low) / 2
+    basic_upper = hl2 + multiplier * atr
+    basic_lower = hl2 - multiplier * atr
+
+    final_upper = pd.Series(index=df.index, dtype="float64")
+    final_lower = pd.Series(index=df.index, dtype="float64")
+    trend = pd.Series(index=df.index, dtype="float64")  # +1 uptrend, -1 downtrend
+
+    first_valid = atr.first_valid_index()
+    if first_valid is None:
+        df["ST_TREND"] = trend
+        return df
+
+    start_pos = df.index.get_loc(first_valid)
+    final_upper.iloc[start_pos] = basic_upper.iloc[start_pos]
+    final_lower.iloc[start_pos] = basic_lower.iloc[start_pos]
+    trend.iloc[start_pos] = 1.0  # arbitrary seed direction; settles within a few bars
+
+    for i in range(start_pos + 1, len(df)):
+        bu, bl = basic_upper.iloc[i], basic_lower.iloc[i]
+        prev_fu, prev_fl = final_upper.iloc[i - 1], final_lower.iloc[i - 1]
+        prev_close_i = close.iloc[i - 1]
+
+        fu = bu if (bu < prev_fu or prev_close_i > prev_fu) else prev_fu
+        fl = bl if (bl > prev_fl or prev_close_i < prev_fl) else prev_fl
+        final_upper.iloc[i] = fu
+        final_lower.iloc[i] = fl
+
+        prev_trend = trend.iloc[i - 1]
+        if prev_trend == 1.0:
+            trend.iloc[i] = -1.0 if close.iloc[i] < fl else 1.0
+        else:
+            trend.iloc[i] = 1.0 if close.iloc[i] > fu else -1.0
+
+    df["ST_TREND"] = trend
+    return df
+
+
+def add_vwap(df: pd.DataFrame) -> pd.DataFrame:
+    """Volume Weighted Average Price, reset each trading session (day) --
+    the standard convention, since VWAP is an intraday fair-value reference,
+    not a rolling multi-day average. Symbols with no real volume data
+    (indices report 0 via yfinance) end up with VWAP == NaN for the whole
+    session; signals.py detects this and skips the VWAP vote for them."""
+    typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
+    session = pd.Series(df.index, index=df.index).dt.date
+    tpv = typical_price * df["Volume"]
+    cum_tpv = tpv.groupby(session).cumsum()
+    cum_vol = df["Volume"].groupby(session).cumsum()
+    df["VWAP"] = cum_tpv / cum_vol.replace(0, pd.NA)
+    return df
+
+
 def add_volume_ma(df: pd.DataFrame, period: int = VOLUME_MA_PERIOD) -> pd.DataFrame:
     """Rolling average volume, used to confirm breakouts happen on
     meaningfully above-average volume rather than a thin, low-conviction
@@ -133,5 +201,7 @@ def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = add_atr(df)
     df = add_breakout_levels(df)
     df = add_adx(df)
+    df = add_supertrend(df)
+    df = add_vwap(df)
     df = add_volume_ma(df)
     return df
