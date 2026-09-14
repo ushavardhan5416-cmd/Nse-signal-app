@@ -1,19 +1,15 @@
 """
 Fetches OHLCV data for NSE symbols (stocks + indices).
 
-Two backends are available, selected via DATA_SOURCE in config.py:
+Supports two data sources, switchable via DATA_SOURCE in config.py:
+- "yfinance" (default): free, but delayed ~15-20 min. Good for prototyping.
+- "angelone": your own Angel One account via SmartAPI, much less delayed.
+  See angel_client.py and the README for setup.
 
-- "yfinance" (default) -- free, delayed data, no account needed, good for
-  prototyping. Implemented directly in this file.
-- "angelone" -- Angel One SmartAPI, needs a funded trading account with API
-  access. Implemented in angelone_fetch.py; imported lazily below so the app
-  still runs with plain yfinance if the SmartApi package/credentials aren't
-  set up.
-
-Both backends return the same shape: a dict of symbol -> DataFrame with
-['Open','High','Low','Close','Volume'] columns, so nothing else in the app
-(signals.py, backtest.py, telegram_listener.py, main.py) needs to know or
-care which one is active.
+Both paths return the exact same shape (a dict of symbol -> DataFrame with
+['Open','High','Low','Close','Volume'] columns), so nothing downstream
+(indicators, signals, notifier, position_tracker) needs to know or care
+which source is actually active.
 """
 
 import time
@@ -72,7 +68,7 @@ def _split_batch(df: pd.DataFrame, symbols: list[str]) -> dict[str, pd.DataFrame
 
 
 def _fetch_all_yfinance(symbols: list[str]) -> dict[str, pd.DataFrame]:
-    """Fetch OHLCV data for a list of symbols, batching requests for speed."""
+    """Fetch OHLCV data for a list of symbols via yfinance, batching requests."""
     data = {}
 
     for batch in _chunk(symbols, BATCH_SIZE):
@@ -99,6 +95,20 @@ def _fetch_all_yfinance(symbols: list[str]) -> dict[str, pd.DataFrame]:
         # Be a reasonably polite citizen of the free API between batches
         time.sleep(1)
 
+    return data
+
+
+def fetch_all(symbols: list[str]) -> dict[str, pd.DataFrame]:
+    """Fetch OHLCV data for a list of symbols, from whichever source is
+    configured in config.py (DATA_SOURCE)."""
+    if DATA_SOURCE == "angelone":
+        from angel_client import fetch_all_angelone
+        data = fetch_all_angelone(symbols)
+    elif DATA_SOURCE == "yfinance":
+        data = _fetch_all_yfinance(symbols)
+    else:
+        raise ValueError(f"Unknown DATA_SOURCE '{DATA_SOURCE}' -- must be 'yfinance' or 'angelone'")
+
     missing = set(symbols) - set(data.keys())
     if missing:
         print(f"[data_fetch] No data for {len(missing)} symbols: {sorted(missing)[:10]}"
@@ -107,25 +117,9 @@ def _fetch_all_yfinance(symbols: list[str]) -> dict[str, pd.DataFrame]:
     return data
 
 
-def _fetch_ohlcv_yfinance(symbol: str) -> pd.DataFrame:
+def fetch_ohlcv(symbol: str) -> pd.DataFrame:
     """Fetch recent OHLCV candles for a single symbol (used by backtest.py)."""
-    result = _fetch_all_yfinance([symbol])
+    result = fetch_all([symbol])
     if symbol not in result:
         raise ValueError(f"No data returned for {symbol}. Check the symbol or your connection.")
     return result[symbol]
-
-
-def fetch_all(symbols: list[str]) -> dict[str, pd.DataFrame]:
-    """Dispatches to the configured data backend (DATA_SOURCE in config.py)."""
-    if DATA_SOURCE == "angelone":
-        from angelone_fetch import fetch_all as _fetch_all_angelone
-        return _fetch_all_angelone(symbols)
-    return _fetch_all_yfinance(symbols)
-
-
-def fetch_ohlcv(symbol: str) -> pd.DataFrame:
-    """Dispatches to the configured data backend (DATA_SOURCE in config.py)."""
-    if DATA_SOURCE == "angelone":
-        from angelone_fetch import fetch_ohlcv as _fetch_ohlcv_angelone
-        return _fetch_ohlcv_angelone(symbol)
-    return _fetch_ohlcv_yfinance(symbol)
