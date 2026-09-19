@@ -1,0 +1,90 @@
+"""
+Entry point: runs a polling loop that fetches data, generates signals, and
+sends alerts. The cycle only runs within the configured alert window (see
+config.py / market_hours.py), regardless of what timezone the server itself
+is in.
+
+Also starts a background thread that listens for on-demand Telegram queries
+(e.g. sending "RELIANCE" to the bot to check its signal right now, outside
+the normal schedule) -- see telegram_listener.py.
+
+Tracks open BUY/SELL positions to notify when target/stop-loss is hit, and
+sends a daily summary at a configured time -- see position_tracker.py.
+
+For Nifty/Bank Nifty/Sensex specifically (config.TRADE_SYMBOLS), also
+places paper (simulated, by default) option orders using real premiums --
+see option_chain.py and paper_broker.py. Set PAPER_TRADING=false only once
+you trust this and want it to place real orders.
+"""
+
+import threading
+import time
+
+from config import POLL_INTERVAL_SECONDS, SYMBOLS, TRADE_SYMBOLS
+from data_fetch import fetch_all
+from market_hours import is_within_alert_window, now_ist
+from notifier import notify_signals
+from paper_broker import check_paper_positions, is_paper_trading, maybe_send_paper_summary, place_paper_order
+from position_tracker import check_positions, maybe_send_daily_summary, open_position
+from signals import generate_all_signals
+from telegram_listener import run_listener
+
+
+def run_once() -> None:
+    if not is_within_alert_window():
+        print(f"[{now_ist()}] Outside alert window (trading days, configured "
+              f"hours only) -- skipping this cycle.")
+        return
+
+    print(f"\n[{now_ist()}] Fetching data for {len(SYMBOLS)} symbols...")
+    data = fetch_all(SYMBOLS)
+
+    if not data:
+        print("[main] No data fetched this cycle, skipping.")
+        return
+
+    signals = generate_all_signals(data)
+
+    for s in signals:
+        levels = ""
+        if s.target_price is not None and s.stop_loss is not None:
+            levels = f"  target={s.target_price:.2f}  stop={s.stop_loss:.2f}"
+        options = f"  [{s.option_type} ~{s.approx_strike}]" if s.option_type else ""
+        votes = f"  [{s.vote_count}/{s.total_conditions}: {', '.join(s.triggered_by)}]" if s.is_actionable else ""
+        print(f"  {s.symbol}: {s.action} @ {s.price:.2f}{levels}{options}{votes}  ({', '.join(s.reasons)})")
+
+    # Check existing open positions against this cycle's fresh prices first
+    # (may close some out with a target/stop notification), then open new
+    # positions for any freshly confirmed BUY/SELL signals.
+    current_time = now_ist()
+    check_positions(signals)
+    check_paper_positions(current_time)
+
+    for s in signals:
+        if s.is_actionable:
+            open_position(s)
+            if s.symbol in TRADE_SYMBOLS:
+                place_paper_order(s.symbol, s.option_type, s.price, current_time)
+
+    notify_signals(signals, only_actionable=True)
+
+    maybe_send_daily_summary(current_time)
+    maybe_send_paper_summary(current_time)
+
+
+def run_loop() -> None:
+    mode = "PAPER (simulated, no real orders)" if is_paper_trading() else "⚠️ LIVE (real orders will be placed)"
+    print("Starting NSE signals app. Press Ctrl+C to stop.")
+    print(f"Options auto-trading mode: {mode} -- symbols: {', '.join(TRADE_SYMBOLS)}")
+    while True:
+        try:
+            run_once()
+        except Exception as exc:
+            print(f"[main] Error during cycle: {exc}")
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+
+if __name__ == "__main__":
+    listener_thread = threading.Thread(target=run_listener, daemon=True)
+    listener_thread.start()
+    run_loop()
